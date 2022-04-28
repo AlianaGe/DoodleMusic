@@ -1,5 +1,10 @@
 import os
 import numpy as np
+from doodle_musegan import musegan
+import note_seq
+from magenta.models.melody_rnn import melody_rnn_sequence_generator
+from magenta.models.shared import sequence_generator_bundle
+from note_seq.protobuf import generator_pb2
 
 PROJECT_DIR = os.path.dirname(os.getcwd())
 DATA_DIR = os.path.join(PROJECT_DIR, 'resources')
@@ -7,7 +12,6 @@ DATA_MIDI = os.path.join(DATA_DIR, 'midi', 'in')
 DATA_PIANOROLL = os.path.join(DATA_DIR, 'pianorolls')
 SOUND_FONT_PATH = os.path.join(DATA_DIR, 'soundfont')
 
-# MUSIC_RNN = os.path.join(DATA_DIR, 'model_checkpoints', 'music_rnn', 'lookback_rnn.mag')
 MUSIC_RNN_TYPE = 'basic_rnn'
 MUSIC_RNN = os.path.join(DATA_DIR, 'model_checkpoints', 'music_rnn', MUSIC_RNN_TYPE + '.mag')
 # MODEL_DIR_MUSEGAN = os.path.join(DATA_DIR, 'model_checkpoints', 'musegan')
@@ -22,23 +26,15 @@ RESULT_ACCOMPANY_PIANOROLL_HARD = os.path.join(RESULT_DIR, 'pianorolls', 'fake_x
                                                'fake_x_hard_thresholding_0.npz')
 RESULT_WAV = os.path.join(RESULT_DIR, 'wav')
 
+bundle = sequence_generator_bundle.read_bundle_file(MUSIC_RNN)
+generator_map = melody_rnn_sequence_generator.get_generator_map()
+melody_rnn = generator_map[MUSIC_RNN_TYPE](checkpoint=None, bundle=bundle)
+melody_rnn.initialize()
+
 
 def duet(savepath, next_steps="default", temperature=1, midifile=os.path.join(DATA_MIDI, 'twinkle12.mid')):
-    import note_seq
-    from magenta.models.melody_rnn import melody_rnn_sequence_generator
-    from magenta.models.shared import sequence_generator_bundle
-    from note_seq.protobuf import generator_pb2
-
     # Initialize the model.
-    print("Initializing Melody RNN...")
-    bundle = sequence_generator_bundle.read_bundle_file(MUSIC_RNN)
-    generator_map = melody_rnn_sequence_generator.get_generator_map()
-    melody_rnn = generator_map[MUSIC_RNN_TYPE](checkpoint=None, bundle=bundle)
-    melody_rnn.initialize()
-    print('🎉 Done!')
-
     input_sequence = note_seq.midi_file_to_note_sequence(midifile)
-
     # Set the start time to begin on the next step after the last note ends.
     qpm = input_sequence.tempos[0].qpm
     last_end_time = (max(n.end_time for n in input_sequence.notes)
@@ -47,7 +43,6 @@ def duet(savepath, next_steps="default", temperature=1, midifile=os.path.join(DA
     ori_steps = last_end_time / seconds_per_step  # 总step
     if (next_steps == "default"):
         next_steps = ori_steps
-
     num_steps = ori_steps + next_steps
     total_seconds = num_steps * seconds_per_step
     generator_options = generator_pb2.GeneratorOptions()
@@ -167,38 +162,31 @@ def accompany_result_to_midi(npz, savepath):
     pr.write(savepath)
 
 
-def to_sf2(data, filepath, sample_rate=44100, root_key=60):
-    import doosf2 as doo
-    doo.add_sf2(data, filepath, sample_rate, root_key)
-
-
-def wav_to_sf2(wavfile, filepath, sample_rate=44100, root_key=60):
-    import doosf2 as doo
-    import wave
-    f = wave.open(wavfile, 'r')
-    params = f.getparams()
-    nchannels, sampwidth, framerate, nframes = params[:4]
-    str_data = f.readframes(nframes)
-    f.close()
-    wave_data = np.frombuffer(str_data, dtype=np.int16)
-    # print(wave_data)
-    doo.add_sf2(wave_data, filepath, sample_rate, root_key)
-
-
 def accompany(midipath, savepath):
     c = midi_to_condition_track(midipath)
-    from doodle_musegan import musegan
     musegan(c, RESULT_DIR)
     accompany_result_to_midi(RESULT_ACCOMPANY_PIANOROLL_HARD, savepath)
+    print("Accompany Done!")
+
+
+def midi_concat():
+
+    pass
 
 
 def main():
     # accompany(os.path.join(DATA_MIDI, 'galaxy8.mid'), os.path.join(RESULT_MIDI_ACCOMPANY, 'galaxyAcc.mid'))
-    # duet(os.path.join(RESULT_MIDI_DUET,'lala-2.mid'),midifile=os.path.join(DATA_MIDI,'lala.mid'))
+    # duet(os.path.join(RESULT_MIDI_DUET, 'lala-2.mid'), midifile=os.path.join(DATA_MIDI, 'lala.mid'))
     # wav_to_sf2(os.path.join(DATA_DIR,'wav','test.wav'),os.path.join(SOUND_FONT_PATH,'3090.sf2'))
-    accompany(os.path.join(RESULT_MIDI_DUET, 'lala-1.mid'), os.path.join(RESULT_MIDI_ACCOMPANY, 'lalaAcc.mid'))
+    # accompany(os.path.join(RESULT_MIDI_DUET, 'lala-1.mid'), os.path.join(RESULT_MIDI_ACCOMPANY, 'lalaAcc.mid'))
     # accompany(os.path.join(DATA_MIDI, 'galaxy16.mid'), os.path.join(RESULT_MIDI_ACCOMPANY, 'galaxy16Acc.mid'))
-    # duet_whole(os.path.join(DATA_MIDI, '1-.mid'), midifile='./1.mid')
+    # duet_whole('1d.mid', midifile='./1.mid')
+
+    duet_whole('./test_midi/lala8lkbk.mid', midifile='./test_midi/lala4-1.mid')
+    # duet('./test_midi/lala4-4.mid', midifile='./test_midi/lala4-3.mid')
+    # duet_whole('./test_midi/galaxy4att.mid', midifile='./test_midi/galaxy4.mid')
+    # accompany('./test_midi/lala8-1.mid','./test_midi/lala8-1Acc.mid')
+    # accompany('./test_midi/lala8-2.mid', './test_midi/lala8-2Acc.mid')
 
 
 if __name__ == "__main__":
