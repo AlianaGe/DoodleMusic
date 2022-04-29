@@ -14,10 +14,10 @@ from musegan.model import Model
 from musegan.utils import make_sure_path_exists, load_yaml, update_not_none
 
 LOGGER = logging.getLogger("musegan.inference")
-PARAMS_PATH=''
+PARAMS_PATH = ''
 
 
-def setup(params_path=os.path.join(os.getcwd(),'params.yaml'), config_path=os.path.join(os.getcwd(),'config.yaml')):
+def setup(params_path=os.path.join(os.getcwd(), 'params.yaml'), config_path=os.path.join(os.getcwd(), 'config.yaml')):
     """Parse command line arguments, load model parameters, load configurations
     and setup environment."""
 
@@ -41,12 +41,12 @@ def setup(params_path=os.path.join(os.getcwd(),'params.yaml'), config_path=os.pa
     return params, config
 
 
-def musegan(condition_track, result_dir):
+def musegan(condition_track, result_dir, suffix_idx):
     # Setup
     logging.basicConfig(level=LOGLEVEL, format=LOG_FORMAT)
     params, config = setup()
-    LOGGER.info("Using parameters:\n%s", pformat(params))
-    LOGGER.info("Using configurations:\n%s", pformat(config))
+    # LOGGER.info("Using parameters:\n%s", pformat(params))
+    # LOGGER.info("Using configurations:\n%s", pformat(config))
     # ============================== Placeholders ==============================
     placeholder_x = tf.placeholder(
         tf.float32, shape=([None] + params['data_shape']))
@@ -55,13 +55,15 @@ def musegan(condition_track, result_dir):
     placeholder_c = tf.placeholder(
         tf.float32, shape=([None] + params['data_shape'][:-1] + [1]))
     placeholder_suffix = tf.placeholder(tf.string)
+    # placeholder_result = tf.placeholder(shape=[1, 4, 48, 84, 5])
 
     # ================================= Model ==================================
     # Create sampler configurations
     sampler_config = {
         'result_dir': result_dir,
         'image_grid': (config['rows'], config['columns']),
-        'suffix': placeholder_suffix, 'midi': config['midi'],
+        'suffix': placeholder_suffix,
+        'midi': config['midi'],
         'colormap': np.array(config['colormap']).T,
         'collect_save_arrays_op': config['save_array_samples'],
         'collect_save_images_op': config['save_image_samples'],
@@ -69,9 +71,6 @@ def musegan(condition_track, result_dir):
 
     # Build model
     model = Model(params)
-    _ = model(
-        x=placeholder_x, c=placeholder_c, z=placeholder_z, mode='train',
-        params=params, config=config)
     predict_nodes = model(
         c=placeholder_c, z=placeholder_z, mode='predict', params=params,
         config=sampler_config)
@@ -102,9 +101,12 @@ def musegan(condition_track, result_dir):
         saver.restore(sess, checkpoint_path)
 
         # Run sampler op
-        for i in range(config['runs']):
-            feed_dict_sampler = {placeholder_z: scipy.stats.truncnorm.rvs(
+        feed_dict_sampler = {
+            placeholder_z: scipy.stats.truncnorm.rvs(
                 config['lower'], config['upper'], size=(
                     (config['rows'] * config['columns']),
-                    params['latent_dim'])), placeholder_suffix: str(i), placeholder_c: np.array([condition_track])}
-            sess.run(sampler_op, feed_dict=feed_dict_sampler)
+                    params['latent_dim'])),
+            placeholder_suffix: suffix_idx,
+            placeholder_c: np.array([condition_track])}
+        return sess.run(predict_nodes['fake_x'],
+                        feed_dict=feed_dict_sampler)  # run(self, fetches, feed_dict=None, options=None, run_metadata=None)

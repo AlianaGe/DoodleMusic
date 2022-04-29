@@ -4,12 +4,15 @@ import logging
 import imageio
 import numpy as np
 import tensorflow.compat.v1 as tf
+
 tf.disable_v2_behavior()
 from musegan.io_utils import pianoroll_to_image, vector_to_image
 from musegan.io_utils import image_grid, save_pianoroll
 from musegan.losses import get_adv_losses
 from musegan.utils import load_component, make_sure_path_exists
+
 LOGGER = logging.getLogger(__name__)
+
 
 def get_scheduled_variable(start_value, end_value, start_step, end_step):
     """Return a scheduled decayed/growing variable."""
@@ -23,32 +26,28 @@ def get_scheduled_variable(start_value, end_value, start_step, end_step):
     return tf.train.polynomial_decay(
         start_value, schedule_step, end_step - start_step, end_value)
 
+
 class Model:
     """Class that defines the model."""
+
     def __init__(self, params, name='Model'):
         self.name = name
 
         with tf.variable_scope(self.name, reuse=tf.AUTO_REUSE) as scope:
-
             # Save the variable scope object
             self.scope = scope
 
             # Build the model graph
             LOGGER.info("Building model.")
-            if params.get('is_accompaniment'):
-                self.gen = load_component(
-                    'generator', params['nets']['generator'], 'Generator')(
-                        n_tracks=params['data_shape'][-1] - 1,
-                        condition_track_idx=params['condition_track_idx'])
-            else:
-                self.gen = load_component(
-                    'generator', params['nets']['generator'], 'Generator')(
-                        n_tracks=params['data_shape'][-1])
+            self.gen = load_component(
+                'generator', params['nets']['generator'], 'Generator')(
+                n_tracks=params['data_shape'][-1] - 1,
+                condition_track_idx=params['condition_track_idx'])
             self.dis = load_component(
                 'discriminator', params['nets']['discriminator'],
                 'Discriminator')(
-                    n_tracks=params['data_shape'][-1],
-                    beat_resolution=params['beat_resolution'])
+                n_tracks=params['data_shape'][-1],
+                beat_resolution=params['beat_resolution'])
 
             # Save components to a list for showing statistics
             self.components = [self.gen, self.dis]
@@ -70,7 +69,8 @@ class Model:
                         config=None):
         """Return a dictionary of graph nodes for training."""
         LOGGER.info("Building training nodes.")
-        with tf.variable_scope(self.name, reuse=tf.AUTO_REUSE) as scope:
+        # with tf.variable_scope(self.name, reuse=tf.AUTO_REUSE) as scope:
+        with tf.variable_scope(self.name) as scope:
 
             nodes = {}
 
@@ -81,12 +81,12 @@ class Model:
                 trainable=False)
 
             # Set default latent distribution if not given
-            if z is None:
-                nodes['z'] = tf.truncated_normal((
-                    config['batch_size'], params['latent_dim']))
-            else:
-                nodes['z'] = z
-
+            # if z is None:
+            #     nodes['z'] = tf.truncated_normal((
+            #         config['batch_size'], params['latent_dim']))
+            # else:
+            #     nodes['z'] = z
+            nodes['z'] = z
             # Get slope tensor (for straight-through estimators)
             nodes['slope'] = tf.get_variable(
                 'slope', [], tf.float32, tf.constant_initializer(1.0),
@@ -200,155 +200,89 @@ class Model:
 
     def get_predict_nodes(self, z=None, y=None, c=None, params=None,
                           config=None):
-        """Return a dictionary of graph nodes for training."""
         LOGGER.info("Building prediction nodes.")
         with tf.variable_scope(self.name, reuse=tf.AUTO_REUSE):
-
             nodes = {'z': z}
-
             # Get slope tensor (for straight-through estimators)
             nodes['slope'] = tf.get_variable(
                 'slope', [], tf.float32, tf.constant_initializer(1.0),
                 trainable=False)
 
             # --- Generator output ---------------------------------------------
-            if params['use_binary_neurons']:
-                if params.get('is_accompaniment'):
-                    nodes['fake_x'], nodes['fake_x_preactivated'] = self.gen(
-                        nodes['z'], y, c, False, nodes['slope'])
-                else:
-                    nodes['fake_x'], nodes['fake_x_preactivated'] = self.gen(
-                        nodes['z'], y, False, nodes['slope'])
-            else:
-                if params.get('is_accompaniment'):
-                    nodes['fake_x'] = self.gen(nodes['z'], y, c, False)
-                else:
-                    nodes['fake_x'] = self.gen(nodes['z'], y, False)
+            nodes['fake_x'] = self.gen(nodes['z'], y, c, False)
 
             # ============================ Save ops ============================
-            def _get_filepath(folder_name, name, suffix, ext):
-                """Return the filename."""
-                if suffix:
-                    return os.path.join(
-                        config['result_dir'], folder_name, name,
-                        '{}_{}.{}'.format(name, str(suffix, 'utf8'), ext))
-                return os.path.join(
-                    config['result_dir'], folder_name, name,
-                    '{}.{}'.format(name, ext))
-
-            def _array_to_image(array, colormap=None):
-                """Convert an array to an image array and return it."""
-                if array.ndim == 2:
-                    return vector_to_image(array)
-                return pianoroll_to_image(array, colormap)
+            # def _get_filepath(folder_name, name, suffix, ext):
+            #     """Return the filename."""
+            #     if suffix:
+            #         return os.path.join(
+            #             config['result_dir'], folder_name, name,
+            #             '{}_{}.{}'.format(name, str(suffix, 'utf8'), ext))
+            #     return os.path.join(
+            #         config['result_dir'], folder_name, name,
+            #         '{}.{}'.format(name, ext))
 
             # --- Save array ops -----------------------------------------------
             if config['collect_save_arrays_op']:
-                def _save_array(array, suffix, name):
+                # array = nodes['fake_x'].eval()  # tensor_data.eval()
+                # np.save('./1.npy', array.astype(np.float16))
+
+                # def _save_array(array, suffix, name):
+                #     """Save the input array."""
+                #     filepath = _get_filepath('arrays', name, suffix, 'npy')
+                #     np.save(filepath, array.astype(np.float16))
+                #     return np.array([0], np.int32)
+                def _save_array(array, suffix):
                     """Save the input array."""
-                    filepath = _get_filepath('arrays', name, suffix, 'npy')
-                    np.save(filepath, array.astype(np.float16))
-                    return np.array([0], np.int32)
+                    # from doodle_music import RESULT_ACCOMPANY_NPY
+                    # np.save(RESULT_ACCOMPANY_NPY + suffix, array.astype(np.float16))
+                    np.save('D:/MyProjects/DoodleBand/3090/music/AI-music/test' + suffix + '.npy', array.astype(np.float16))
+                    # return np.array([0], np.int32)
 
                 arrays = {'fake_x': nodes['fake_x']}
                 if params['use_binary_neurons']:
-                    arrays['fake_x_preactivated'] = nodes['fake_x_preactivated']
+                    arrays['fake_x_preactivated'] = nodes['fakeF_x_preactivated']
 
                 save_array_ops = []
-                for key, value in arrays.items():
-                    save_array_ops.append(tf.py_func(
-                        lambda array, suffix, k=key: _save_array(
-                            array, suffix, k),
-                        [value, config['suffix']], tf.int32))
-                    make_sure_path_exists(
-                        os.path.join(config['result_dir'], 'arrays', key))
+                save_array_ops.append(tf.py_func(_save_array, [nodes['fake_x'], config['suffix']], tf.int32))
                 nodes['save_arrays_op'] = tf.group(save_array_ops)
+                # for key, value in arrays.items():
+                #     save_array_ops.append(tf.py_func(
+                #         lambda array, suffix, k=key: _save_array(
+                #             array, suffix, k),
+                #         [value, config['suffix']], tf.int32
+                #     ))
+                #     make_sure_path_exists(
+                #         os.path.join(config['result_dir'], 'arrays', key))
+                # nodes['save_arrays_op'] = tf.group(save_array_ops)
 
-            # --- Save image ops -----------------------------------------------
-            if config['collect_save_images_op']:
-                def _save_image_grid(array, suffix, name):
-                    image = image_grid(array, config['image_grid'])
-                    filepath = _get_filepath('images', name, suffix, 'png')
-                    imageio.imwrite(filepath, image)
-                    return np.array([0], np.int32)
-
-                def _save_images(array, suffix, name):
-                    """Save the input image."""
-                    if 'hard_thresholding' in name:
-                        array = (array > 0).astype(np.float32)
-                    elif 'bernoulli_sampling' in name:
-                        rand_num = np.random.uniform(size=array.shape)
-                        array = (.5 * (array + 1.) > rand_num)
-                        array = array.astype(np.float32)
-                    images = _array_to_image(array)
-                    return _save_image_grid(images, suffix, name)
-
-                def _save_colored_images(array, suffix, name):
-                    """Save the input image."""
-                    if 'hard_thresholding' in name:
-                        array = (array > 0).astype(np.float32)
-                    elif 'bernoulli_sampling' in name:
-                        rand_num = np.random.uniform(size=array.shape)
-                        array = (.5 * (array + 1.) > rand_num)
-                        array = array.astype(np.float32)
-                    images = _array_to_image(array, config['colormap'])
-                    return _save_image_grid(images, suffix, name)
-
-                images = {'fake_x': .5 * (nodes['fake_x'] + 1.)}
-                if params['use_binary_neurons']:
-                    images['fake_x_preactivated'] = .5 * (
-                        nodes['fake_x_preactivated'] + 1.)
-                else:
-                    images['fake_x_hard_thresholding'] = nodes['fake_x']
-                    images['fake_x_bernoulli_sampling'] = nodes['fake_x']
-
-                save_image_ops = []
-                for key, value in images.items():
-                    save_image_ops.append(tf.py_func(
-                        lambda array, suffix, k=key: _save_images(
-                            array, suffix, k),
-                        [value, config['suffix']], tf.int32))
-                    save_image_ops.append(tf.py_func(
-                        lambda array, suffix, k=key: _save_colored_images(
-                            array, suffix, k + '_colored'),
-                        [value, config['suffix']], tf.int32))
-                    make_sure_path_exists(os.path.join(
-                        config['result_dir'], 'images', key))
-                    make_sure_path_exists(os.path.join(
-                        config['result_dir'], 'images', key  + '_colored'))
-                nodes['save_images_op'] = tf.group(save_image_ops)
-
-            # --- Save pianoroll ops -------------------------------------------
-            if config['collect_save_pianorolls_op']:
-                def _save_pianoroll(array, suffix, name):
-                    filepath = _get_filepath('pianorolls', name, suffix, 'npz')
-                    if 'hard_thresholding' in name:
-                        array = (array > 0)
-                    elif 'bernoulli_sampling' in name:
-                        rand_num = np.random.uniform(size=array.shape)
-                        array = (.5 * (array + 1.) > rand_num)
-                    save_pianoroll(
-                        filepath, array, config['midi']['programs'],
-                        list(map(bool, config['midi']['is_drums'])),
-                        config['midi']['tempo'], params['beat_resolution'],
-                        config['midi']['lowest_pitch'])
-                    return np.array([0], np.int32)
-
-                if params['use_binary_neurons']:
-                    pianorolls = {'fake_x': nodes['fake_x'] > 0}
-                else:
-                    pianorolls = {
-                        'fake_x_hard_thresholding': nodes['fake_x'],
-                        'fake_x_bernoulli_sampling': nodes['fake_x']}
-
-                save_pianoroll_ops = []
-                for key, value in pianorolls.items():
-                    save_pianoroll_ops.append(tf.py_func(
-                        lambda array, suffix, k=key:
-                        _save_pianoroll(array, suffix, k),
-                        [value, config['suffix']], tf.int32))
-                    make_sure_path_exists(
-                        os.path.join(config['result_dir'], 'pianorolls', key))
-                nodes['save_pianorolls_op'] = tf.group(save_pianoroll_ops)
-
+                # # --- Save pianoroll ops -------------------------------------------
+                # if config['collect_save_pianorolls_op']:
+                #     def _save_pianoroll(array, suffix, name):
+                #         filepath = _get_filepath('pianorolls', name, suffix, 'npz')
+                #         if 'hard_thresholding' in name:
+                #             array = (array > 0)
+                #         elif 'bernoulli_sampling' in name:
+                #             rand_num = np.random.uniform(size=array.shape)
+                #             array = (.5 * (array + 1.) > rand_num)
+                #         save_pianoroll(
+                #             filepath, array, config['midi']['programs'],
+                #             list(map(bool, config['midi']['is_drums'])),
+                #             config['midi']['tempo'], params['beat_resolution'],
+                #             config['midi']['lowest_pitch'])
+                #         return np.array([0], np.int32)
+                #
+                #     pianorolls = {
+                #         'fake_x_hard_thresholding': nodes['fake_x'],
+                #         'fake_x_bernoulli_sampling': nodes['fake_x']}
+                #
+                #     save_pianoroll_ops = []
+                #     for key, value in pianorolls.items():
+                #         save_pianoroll_ops.append(tf.py_func(
+                #             lambda array, suffix, k=key:
+                #             _save_pianoroll(array, suffix, k),
+                #             [value, config['suffix']], tf.int32))
+                #         make_sure_path_exists(
+                #             os.path.join(config['result_dir'], 'pianorolls', key))
+                #     nodes['save_pianorolls_op'] = tf.group(save_pianoroll_ops)
         return nodes

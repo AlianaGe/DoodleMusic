@@ -23,8 +23,9 @@ RESULT_MIDI_DUET = os.path.join(RESULT_MIDI, 'duet')
 RESULT_ACCOMPANY_PIANOROLL_B = os.path.join(RESULT_DIR, 'pianorolls', 'fake_x_bernoulli_sampling',
                                             'fake_x_bernoulli_sampling_0.npz')
 RESULT_ACCOMPANY_PIANOROLL_HARD = os.path.join(RESULT_DIR, 'pianorolls', 'fake_x_hard_thresholding',
-                                               'fake_x_hard_thresholding_0.npz')
+                                               'fake_x_hard_thresholding')
 RESULT_WAV = os.path.join(RESULT_DIR, 'wav')
+RESULT_ACCOMPANY_NPY = os.path.join(RESULT_DIR, 'pianorolls', 'fake_x_hard_thresholding')
 
 bundle = sequence_generator_bundle.read_bundle_file(MUSIC_RNN)
 generator_map = melody_rnn_sequence_generator.get_generator_map()
@@ -32,9 +33,9 @@ melody_rnn = generator_map[MUSIC_RNN_TYPE](checkpoint=None, bundle=bundle)
 melody_rnn.initialize()
 
 
-def duet(savepath, next_steps="default", temperature=1, midifile=os.path.join(DATA_MIDI, 'twinkle12.mid')):
+def duet(savepath, midipath=os.path.join(DATA_MIDI, 'twinkle12.mid'), next_steps="default", temperature=1, ):
     # Initialize the model.
-    input_sequence = note_seq.midi_file_to_note_sequence(midifile)
+    input_sequence = note_seq.midi_file_to_note_sequence(midipath)
     # Set the start time to begin on the next step after the last note ends.
     qpm = input_sequence.tempos[0].qpm
     last_end_time = (max(n.end_time for n in input_sequence.notes)
@@ -58,7 +59,7 @@ def duet(savepath, next_steps="default", temperature=1, midifile=os.path.join(DA
     return sequence_trimmed
 
 
-def duet_whole(savepath, next_steps="default", temperature=1, midifile=os.path.join(DATA_MIDI, 'twinkle12.mid')):
+def duet_whole(savepath, midipath=os.path.join(DATA_MIDI, 'twinkle12.mid'), next_steps="default", temperature=1, ):
     import note_seq
     from magenta.models.melody_rnn import melody_rnn_sequence_generator
     from magenta.models.shared import sequence_generator_bundle
@@ -72,7 +73,7 @@ def duet_whole(savepath, next_steps="default", temperature=1, midifile=os.path.j
     melody_rnn.initialize()
     print('🎉 Done!')
 
-    input_sequence = note_seq.midi_file_to_note_sequence(midifile)
+    input_sequence = note_seq.midi_file_to_note_sequence(midipath)
 
     # Set the start time to begin on the next step after the last note ends.
     qpm = input_sequence.tempos[0].qpm
@@ -97,8 +98,8 @@ def duet_whole(savepath, next_steps="default", temperature=1, midifile=os.path.j
     return sequence
 
 
-def midi_to_condition_track(midifile):
-    """ midifile(single track) to pypianoroll (1,-1...)"""
+def midi_to_condition_track(midipath):
+    """ midipath(single track) to pypianoroll (1,-1...)"""
     import pypianoroll
     # condition track:[4,48,84,1]
     n_bar = 4
@@ -106,7 +107,7 @@ def midi_to_condition_track(midifile):
     n_timesteps = n_bar * beat_resolution * 4  # 4/4 拍
     n_pitch = 84
 
-    pr = pypianoroll.Multitrack(filepath=midifile,
+    pr = pypianoroll.Multitrack(filepath=midipath,
                                 beat_resolution=beat_resolution)
     # pr.clip(24, 108)  # C1 -> C8
     c = np.array(pr.tracks[0].pianoroll, dtype=int)[:, 24:108]
@@ -117,76 +118,74 @@ def midi_to_condition_track(midifile):
     return c
 
 
-def accompany_result_to_midi(npz, savepath):
-    """ convert accompany.npz to midifile """
+def accompany_result_to_midi(savepath, npy):
     import pypianoroll
-    from scipy.sparse.csc import csc_matrix
-    import json
+    velocity = [60, 100, 20, 20, 30]
+    programs = [127, 0, 46, 33, 48]  # [0, 0, 25, 33, 48] # drum,piano,harp/guitar,bass,string
+    is_drums = [True, False, False, False, False]  # [1, 0, 0, 0, 0]
+    tracks = []
+    a = npy
+    # timestep*pitch
+    for i in range(5):
+        b = a[..., i]
+        b = b.reshape(-1, 84)
+        b[b > 0] = velocity[i]
+        b = np.pad(b, ((0, 0), (24, 20)), constant_values=-1)
+        track = pypianoroll.Track(b, program=programs[i], is_drum=is_drums[i])
+        tracks.append(track)
 
-    def reconstruct_sparse(target_dict, name):
-        """Return a reconstructed instance of `scipy.sparse.csc_matrix`."""
-        return csc_matrix((target_dict[name + '_csc_data'],
-                           target_dict[name + '_csc_indices'],
-                           target_dict[name + '_csc_indptr']),
-                          shape=target_dict[name + '_csc_shape']).toarray()
-
-    with np.load(npz) as loaded:
-        if 'info.json' not in loaded:
-            raise ValueError("Cannot find 'info.json' in the .npz file")
-        info_dict = json.loads(loaded['info.json'].decode('utf-8'))
-        name = info_dict['name']
-        beat_resolution = info_dict['beat_resolution']
-
-        tempo = loaded['tempo']
-        if 'downbeat' in loaded.files:
-            downbeat = loaded['downbeat']
-        else:
-            downbeat = None
-
-        idx = 0
-        tracks = []
-        track_velocity = [60, 100, 0, 0, 35]  # drum, piano, guitar(×), bass, strings
-
-        while str(idx) in info_dict:
-            pianoroll = reconstruct_sparse(loaded,
-                                           'pianoroll_{}'.format(idx))
-            a = np.array(pianoroll, dtype=int)
-            a[a > 0] = track_velocity[idx]
-            track = pypianoroll.Track(a, info_dict[str(idx)]['program'],  # program是可变的！
-                                      info_dict[str(idx)]['is_drum'],
-                                      info_dict[str(idx)]['name'])
-            tracks.append(track)
-            idx += 1
-
-    pr = pypianoroll.Multitrack(tracks=tracks, tempo=tempo, beat_resolution=beat_resolution)
+    pr = pypianoroll.Multitrack(tracks=tracks, tempo=120, beat_resolution=12)
     pr.write(savepath)
 
 
-def accompany(midipath, savepath):
-    c = midi_to_condition_track(midipath)
-    musegan(c, RESULT_DIR)
-    accompany_result_to_midi(RESULT_ACCOMPANY_PIANOROLL_HARD, savepath)
+def accompany(savepath, midipath):
+    import pypianoroll
+    # condition track:[4,48,84,1]
+    n_bar = 4
+    beat_resolution = 12
+    n_timesteps = n_bar * beat_resolution * 4  # 4/4 拍
+    n_pitch = 84
+
+    pr = pypianoroll.Multitrack(filepath=midipath,
+                                beat_resolution=beat_resolution)
+    # pr.clip(24, 108)  # C1 -> C8
+    c = np.array(pr.tracks[0].pianoroll, dtype=int)[:, 24:108]
+    # change to -1,1 as input of musegan
+    c[c == c.min()] = -1
+    c[c == c.max()] = 1
+    # 204*84
+    n_submidi = int(np.ceil(c.shape[0] / n_timesteps))  # 向上取整
+    # 不足补0
+    tmp = -np.ones([n_submidi * n_timesteps - c.shape[0], n_pitch], dtype=int)
+    c = np.append(c, tmp, axis=0)
+    result = []
+    for i in range(n_submidi):
+        cc = c[i * n_timesteps:(i + 1) * n_timesteps, :].reshape(n_bar, 4 * beat_resolution, n_pitch, -1)
+        result.append(musegan(cc, RESULT_DIR, str(i))[0])  # musegan返回[1,4,48,84,1]的
+    result = np.array(result)
+    accompany_result_to_midi(savepath, result)
     print("Accompany Done!")
-
-
-def midi_concat():
-
-    pass
 
 
 def main():
     # accompany(os.path.join(DATA_MIDI, 'galaxy8.mid'), os.path.join(RESULT_MIDI_ACCOMPANY, 'galaxyAcc.mid'))
-    # duet(os.path.join(RESULT_MIDI_DUET, 'lala-2.mid'), midifile=os.path.join(DATA_MIDI, 'lala.mid'))
+    # duet(os.path.join(RESULT_MIDI_DUET, 'lala-2.mid'), midipath=os.path.join(DATA_MIDI, 'lala.mid'))
     # wav_to_sf2(os.path.join(DATA_DIR,'wav','test.wav'),os.path.join(SOUND_FONT_PATH,'3090.sf2'))
     # accompany(os.path.join(RESULT_MIDI_DUET, 'lala-1.mid'), os.path.join(RESULT_MIDI_ACCOMPANY, 'lalaAcc.mid'))
     # accompany(os.path.join(DATA_MIDI, 'galaxy16.mid'), os.path.join(RESULT_MIDI_ACCOMPANY, 'galaxy16Acc.mid'))
-    # duet_whole('1d.mid', midifile='./1.mid')
+    # duet_whole('1d.mid', midipath='./1.mid')
 
-    duet_whole('./test_midi/lala8lkbk.mid', midifile='./test_midi/lala4-1.mid')
-    # duet('./test_midi/lala4-4.mid', midifile='./test_midi/lala4-3.mid')
-    # duet_whole('./test_midi/galaxy4att.mid', midifile='./test_midi/galaxy4.mid')
-    # accompany('./test_midi/lala8-1.mid','./test_midi/lala8-1Acc.mid')
+    # duet_whole('./test_midi/lala8lkbk.mid', midipath='./test_midi/lala4-1.mid')
+    # duet('./test_midi/lala4-4.mid', midipath='./test_midi/lala4-3.mid')
+    # duet_whole('./test_midi/galaxy4att.mid', midipath='./test_midi/galaxy4.mid')
+
     # accompany('./test_midi/lala8-2.mid', './test_midi/lala8-2Acc.mid')
+    accompany('./test_midi/testAcc.mid', './test_midi/test.mid')
+    # accompany('./test_midi/1.mid', './test_midi/lala8-1.mid')
+    # accompany('./test_midi/1.mid', './test_midi/galaxy8.mid', )
+    # accompany_result_to_midi(os.path.join(RESULT_DIR, 'pianorolls', 'fake_x_hard_thresholding',
+    #                                       'fake_x_hard_thresholding_h.npz'), './test_midi/1.mid')
+    # t1()
 
 
 if __name__ == "__main__":
