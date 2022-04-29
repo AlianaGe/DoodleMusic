@@ -7,12 +7,16 @@ runs: 1
 gpu: "0"
 # Experiment
 n_jobs: 20
-log_loss_steps: 100 # set to 0 to disable loss logging
-save_samples_steps: 100 # set to 0 to disable saving samples
+#log_loss_steps: 100 # set to 0 to disable loss logging
+#save_samples_steps: 100 # set to 0 to disable saving samples
+#save_summaries_steps: 0 # set to 0 to disable saving summaries
+#save_checkpoint_steps: 10000 # set to 0 to disable saving checkpoints
+#evaluate_steps: 100 # set to 0 to disable evaluation
+log_loss_steps: 0 # set to 0 to disable loss logging
+save_samples_steps: 0 # set to 0 to disable saving samples
 save_summaries_steps: 0 # set to 0 to disable saving summaries
-save_checkpoint_steps: 10000 # set to 0 to disable saving checkpoints
-evaluate_steps: 100 # set to 0 to disable evaluation
-
+save_checkpoint_steps: 0 # set to 0 to disable saving checkpoints
+evaluate_steps: 0 # set to 0 to disable evaluation
 # Data
 data_source: 'npz' # 'sa', 'npy', 'npz'
 data_root: ~

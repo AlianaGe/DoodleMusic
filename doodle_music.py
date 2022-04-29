@@ -148,9 +148,13 @@ def accompany(savepath, midipath):
 
     pr = pypianoroll.Multitrack(filepath=midipath,
                                 beat_resolution=beat_resolution)
+
     # pr.clip(24, 108)  # C1 -> C8
     c = np.array(pr.tracks[0].pianoroll, dtype=int)[:, 24:108]
     # change to -1,1 as input of musegan
+    # 去掉前面的空白
+    # cut = (c.sum(axis=1) != 0).argmax(axis=0)
+    # c = c[cut:, :]
     c[c == c.min()] = -1
     c[c == c.max()] = 1
     # 204*84
@@ -186,7 +190,6 @@ def main():
     # accompany_result_to_midi(os.path.join(RESULT_DIR, 'pianorolls', 'fake_x_hard_thresholding',
     #                                       'fake_x_hard_thresholding_h.npz'), './test_midi/1.mid')
     # t1()
-
 
 if __name__ == "__main__":
     main()
