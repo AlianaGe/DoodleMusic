@@ -4,7 +4,7 @@ latent_dim: 128
 is_conditional: false
 is_accompaniment: true
 condition_track_idx: 1
-use_binary_neurons: false
+use_binary_neurons: true
 nets:
   generator: accompaniment
   discriminator: default

@@ -1,8 +1,8 @@
-checkpoint_dir: "../resources/model_checkpoints/musegan"
+checkpoint_dir: "D:/MyFiles/FinalTest/music/resources/model_checkpoints/musegan"
 rows: 1
 columns: 1
 lower: -2 # ower bound of the truncated normal random
-upper: 2 
+upper: 2
 runs: 1
 gpu: "0"
 # Experiment

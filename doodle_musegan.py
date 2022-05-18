@@ -16,8 +16,10 @@ from musegan.utils import make_sure_path_exists, load_yaml, update_not_none
 LOGGER = logging.getLogger("musegan.inference")
 PARAMS_PATH = ''
 
+now_path = r'D:\MyFiles\FinalTest\music\AI-music'
+#def setup(params_path=os.path.join(os.getcwd(), 'params.yaml'), config_path=os.path.join(os.getcwd(), 'config.yaml')):
 
-def setup(params_path=os.path.join(os.getcwd(), 'params.yaml'), config_path=os.path.join(os.getcwd(), 'config.yaml')):
+def setup(params_path=os.path.join(now_path, 'params.yaml'), config_path=os.path.join(now_path, 'config.yaml')):
     """Parse command line arguments, load model parameters, load configurations
     and setup environment."""
 
