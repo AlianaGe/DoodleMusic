@@ -1,4 +1,5 @@
 /test_midi
 /.idea
 /__pycache__
+/chorderator/static
 *ok.py
