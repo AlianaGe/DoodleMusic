@@ -1,6 +1,10 @@
 # DoodleMusic🎵
 AI-Music Module of DoodleBand
 
+# program entry:
+doodle_music.py/duet
+doodle_music.py/accompany
+
 
 **References**:
 
